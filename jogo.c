@@ -1,0 +1,235 @@
+#include "raylib.h"
+#include <stdio.h>
+#include <math.h>
+
+#define MAX_ASTEROIDS 35
+#define PLAYER_SPEED 5
+#define ASTEROID_SPEED 10
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
+#define ASTEROID_SPAWN_INTERVAL 400
+
+typedef enum { MENU_START, GAME_PLAYING, GAME_OVER } GameState;
+
+typedef struct {
+    Vector2 position; // Posição do jogador
+    Vector2 speed;
+} Player;
+
+typedef struct {
+    Vector2 position; // Posição do círculo
+    float radius; // Raio do círculo
+    Vector2 speed;
+    bool active;
+} Asteroid;
+
+int main(void)
+{
+    // Inicializar a janela
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Space Dodger");
+
+    // Inicializar variáveis do jogo
+    Player player = { { WINDOW_WIDTH / 2, WINDOW_HEIGHT - 50 }, { 0, 0 } };
+    Asteroid asteroids[MAX_ASTEROIDS];
+    int score = 0;
+    int oldScore = 0;
+    int framesCounter = 0;
+    int asteroidSpawnTimer = ASTEROID_SPAWN_INTERVAL;
+    bool gameOver = false;
+    GameState gameState = MENU_START;
+    int menuOption = 0;
+    bool playExplosionSound = false;
+    bool explosionPlayed = false;
+
+    // Inicializar asteroides
+    for (int i = 0; i < MAX_ASTEROIDS; i++) {
+        asteroids[i].position.x = GetRandomValue(20, WINDOW_WIDTH - 20);
+        asteroids[i].position.y = GetRandomValue(-1000, -100);
+        asteroids[i].radius = 20;
+        asteroids[i].speed.x = 0;
+        asteroids[i].speed.y = GetRandomValue(1, 5);
+        asteroids[i].active = true;
+    }
+
+    // Inicializar áudio
+    InitAudioDevice();
+
+    // Carregar som de explosão (usando caminho relativo)
+    Sound explosion = LoadSound("C:/raylib/raylib/examples/core/resources/explosion.wav");
+
+    SetTargetFPS(60);
+
+    while (!WindowShouldClose())
+    {
+        // Atualizar lógica do jogo
+        switch (gameState)
+        {
+            case MENU_START:
+                if (IsKeyPressed(KEY_ENTER)) gameState = GAME_PLAYING;
+                else if (IsKeyPressed(KEY_DOWN)) menuOption = 1;
+                else if (IsKeyPressed(KEY_UP)) menuOption = 0;
+                break;
+
+            case GAME_PLAYING:
+                if (!gameOver)
+                {
+                    // Movimento do jogador
+                    if (IsKeyDown(KEY_LEFT)) player.speed.x = -PLAYER_SPEED;
+                    else if (IsKeyDown(KEY_RIGHT)) player.speed.x = PLAYER_SPEED;
+                    else player.speed.x = 0;
+
+                    // Atualizar posição do jogador dentro dos limites da tela
+                    player.position.x += player.speed.x;
+                    if (player.position.x <= 0) player.position.x = 0;
+                    else if (player.position.x >= WINDOW_WIDTH) player.position.x = WINDOW_WIDTH;
+
+                    // Verificar colisões com os asteroides
+                    for (int i = 0; i < MAX_ASTEROIDS; i++)
+                    {
+                        if (asteroids[i].active && CheckCollisionCircles(player.position, 20, asteroids[i].position, asteroids[i].radius))
+                        {
+                            gameOver = true;
+                            gameState = GAME_OVER;
+                            oldScore = score;
+                            if (!playExplosionSound) {
+                                PlaySound(explosion); // Reproduzir som de explosão
+                                playExplosionSound = true;
+                                explosionPlayed = true; // Marcar que o som de explosão foi reproduzido
+                            }
+                        }
+                    }
+
+                    // Atualizar posição dos asteroides
+                    for (int i = 0; i < MAX_ASTEROIDS; i++)
+                    {
+                        if (asteroids[i].active)
+                        {
+                            asteroids[i].position.y += asteroids[i].speed.y;
+
+                            // Se o asteroide sair da tela, reposicioná-lo
+                            if (asteroids[i].position.y > WINDOW_HEIGHT)
+                            {
+                                asteroids[i].position.y = GetRandomValue(-1000, -100);
+                                asteroids[i].position.x = GetRandomValue(20, WINDOW_WIDTH - 20);
+                                asteroids[i].speed.y = GetRandomValue(1, 5);
+                            }
+                        }
+                    }
+
+                    // Atualizar contagem de frames e pontuação
+                    framesCounter++;
+                    if (framesCounter >= 60)
+                    {
+                        framesCounter = 0;
+                        score++;
+                        // Aumentar a velocidade dos asteroides a cada 10 pontos
+                        
+                        if (score % 5 == 0) {
+                            for (int i = 0; i < MAX_ASTEROIDS; i++) {
+                                asteroids[i].speed.y += 8.0f;
+                                PlaySound(explosion);
+                                explosionPlayed = true; // Marcar que o som de explosão foi reproduzido
+                            
+                            }
+                            // Tocar o som de explosão apenas uma vez a cada 10 pontos
+                            
+                        }
+                    }
+
+                    // Reduzir o temporizador de spawn de asteroides
+                    asteroidSpawnTimer--;
+                    if (asteroidSpawnTimer <= 0)
+                    {
+                        asteroidSpawnTimer = ASTEROID_SPAWN_INTERVAL;
+                        int newAsteroids = GetRandomValue(3, 7);
+                        for (int i = 0; i < newAsteroids; i++) {
+                            for (int j = 0; j < MAX_ASTEROIDS; j++) {
+                                if (!asteroids[j].active) {
+                                    asteroids[j].position.x = GetRandomValue(20, WINDOW_WIDTH - 20);
+                                    asteroids[j].position.y = GetRandomValue(-1000, -100);
+                                    asteroids[j].speed.y = GetRandomValue(5,15);
+                                    asteroids[j].active = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case GAME_OVER:
+                if (IsKeyPressed(KEY_ENTER))
+                {
+                    // Resetar variáveis do jogo
+                    player.position = (Vector2){ WINDOW_WIDTH / 2, WINDOW_HEIGHT - 50 };
+                    score = 0;
+                    gameOver = false;
+                    gameState = MENU_START;
+                    menuOption = 0;
+                    playExplosionSound = false;
+                    explosionPlayed = false; // Resetar a flag de explosão reproduzida
+
+                    // Resetar posição e velocidade dos asteroides
+                    for (int i = 0; i < MAX_ASTEROIDS; i++) {
+                        asteroids[i].position.x = GetRandomValue(20, WINDOW_WIDTH - 20);
+                        asteroids[i].position.y = GetRandomValue(-1000, -100);
+                        asteroids[i].speed.y = GetRandomValue(1, 5);
+                        asteroids[i].active = true;
+                    }
+                }
+                break;
+        }
+
+        // Desenhar
+        BeginDrawing();
+        ClearBackground(BLACK);
+
+        // Desenhar asteroides
+        for (int i = 0; i < MAX_ASTEROIDS; i++)
+        {
+            if (asteroids[i].active) DrawCircleV(asteroids[i].position, asteroids[i].radius, GRAY);
+        }
+
+        // Desenhar jogador
+        if (gameState == GAME_PLAYING || gameState == GAME_OVER) DrawTriangle((Vector2){ player.position.x - 20, player.position.y + 20 },
+                                                                            (Vector2){ player.position.x + 20, player.position.y + 20 },
+                                                                            (Vector2){ player.position.x, player.position.y - 20 },
+                                                                            WHITE);
+
+        // Desenhar pontuação
+        char scoreText[40];
+        snprintf(scoreText, 40, "Pontuacao atual: %d", score);
+        DrawText(scoreText, 10, 10, 20, WHITE);
+
+        // Se o jogo acabou, desenhar pontuação anterior e atual
+        if (gameState == GAME_OVER)
+        {
+            char oldScoreText[40];
+            snprintf(oldScoreText, 40, "Pontuacao anterior: %d", oldScore);
+            DrawText(oldScoreText, WINDOW_WIDTH / 2 - MeasureText(oldScoreText, 20) / 2, WINDOW_HEIGHT / 2 - 40, 20, WHITE);
+            DrawText("Pressione ENTER para reiniciar", WINDOW_WIDTH / 2 - 220, WINDOW_HEIGHT / 2, 20, WHITE);
+        }
+
+        // Desenhar menu
+        if (gameState == MENU_START)
+        {
+            DrawText("Space Dodger", WINDOW_WIDTH / 2 - 150, WINDOW_HEIGHT / 2 - 40, 40, WHITE);
+            DrawText("Iniciar", WINDOW_WIDTH / 2 - 50, WINDOW_HEIGHT / 2, 20, (menuOption == 0) ? RED : WHITE);
+
+            if (menuOption == 0) DrawText(">", WINDOW_WIDTH / 2 - 70, WINDOW_HEIGHT / 2, 20, RED);
+        }
+
+        EndDrawing();
+    }
+
+    // Descarregar o som de explosão
+    UnloadSound(explosion);
+
+    // Fechar o dispositivo de áudio
+    CloseAudioDevice();
+
+    // Fechar a janela
+    CloseWindow();
+
+    return 0;
+}
